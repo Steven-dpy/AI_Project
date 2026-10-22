@@ -1,0 +1,43 @@
+# ============================================================================
+#  API Key 模板 —— 首次运行「启动.bat」时会自动复制为 sk/apikey.txt
+#  然后把你的 Key 粘到下面，只粘 sk- 开头那一串：不要引号、不要空格、不要说明文字
+#
+#  申请地址：https://platform.deepseek.com  →  「API keys」→ 创建
+#  跑几百份 JD 大约几元。
+#
+#  sk/apikey.txt 已在 .gitignore 里，不会被推到 GitHub。
+# ============================================================================
+
+# 把 Key 粘在下面这一行：
+
+
+
+# ============================================================================
+#  可选：图片识别（png / jpg）
+#  输入 txt / pdf / docx 不需要这一段。
+#  DeepSeek 的对话模型不能看图，要传图片就需要另一个视觉模型，二选一：
+# ============================================================================
+
+# 【方案一】智谱 GLM-4V-Flash —— 免费，注册最简单
+#   1. https://open.bigmodel.cn 注册登录
+#   2. 右上「API Keys」创建并复制
+#   3. 把下面三行的 # 去掉，密钥填进去，保存后刷新网页
+#
+# VISION_MODEL=glm-4v-flash
+# VISION_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+# VISION_API_KEY=你的智谱密钥
+
+# 【方案二】通义千问 Qwen-VL —— 阿里云百炼，有免费额度
+#   1. https://bailian.console.aliyun.com 开通并创建 API Key
+#   2. 把下面三行的 # 去掉，密钥填进去，保存后刷新网页
+#
+# VISION_MODEL=qwen-vl-plus
+# VISION_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+# VISION_API_KEY=sk-你的百炼密钥
+
+# ============================================================================
+#  高级：换模型 / 换服务商（都走 OpenAI 兼容协议）
+# ============================================================================
+#
+# BASE_URL=https://api.deepseek.com/v1
+# MODEL=deepseek-chat

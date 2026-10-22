@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>可被搜索性诊断器</title>
+<style>
+  :root{
+    --ink:#1a1a1a; --sub:#6e6e6e; --line:#e3e8ec;
+    --primary:#1F4E5F; --primary-2:#2d6e84; --bg:#f6f8f9;
+    --ok:#1a7f4b; --warn:#b5761a; --bad:#b03030; --soft:#eef4f6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.65 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1040px;margin:0 auto;padding:28px 20px 80px}
+  header{margin-bottom:22px}
+  h1{font-size:22px;margin:0 0 6px;color:var(--primary);letter-spacing:.5px}
+  .lede{color:var(--sub);font-size:13.5px;margin:0}
+  .privacy{margin-top:12px;background:#fff;border:1px solid var(--line);
+           border-left:3px solid var(--primary);border-radius:6px;
+           padding:10px 14px;font-size:12.5px;color:var(--sub);line-height:1.75}
+  .privacy b{color:var(--ink)}
+  .status{margin-top:11px;display:flex;align-items:center;gap:8px;
+          font-size:13px;color:var(--sub);line-height:1.5}
+  .dot{width:9px;height:9px;border-radius:50%;background:#c9d6dd;flex:none}
+  .dot.ok{background:var(--ok)}
+  .dot.warn{background:var(--warn)}
+  .dot.bad{background:var(--bad)}
+
+  .panel{background:#fff;border:1px solid var(--line);border-radius:10px;
+         padding:20px;margin-bottom:18px}
+  .uploads{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:760px){.uploads{grid-template-columns:1fr}}
+  .drop{border:1.5px dashed #c9d6dd;border-radius:10px;padding:22px 16px;
+        text-align:center;cursor:pointer;transition:.15s;background:#fbfdfd}
+  .drop:hover,.drop.on{border-color:var(--primary-2);background:var(--soft)}
+  .drop.has{border-style:solid;border-color:var(--primary-2);background:var(--soft)}
+  .drop .t{font-weight:600;color:var(--primary);margin-bottom:4px}
+  .drop .s{font-size:12.5px;color:var(--sub)}
+  .drop .f{margin-top:10px;font-size:13px;color:var(--primary);word-break:break-all}
+  input[type=file]{display:none}
+
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  button{border:0;border-radius:8px;padding:11px 20px;font-size:14.5px;
+         font-weight:600;cursor:pointer;transition:.15s;font-family:inherit}
+  .btn-main{background:var(--primary);color:#fff}
+  .btn-main:hover{background:var(--primary-2)}
+  .btn-main:disabled{background:#b8c6cc;cursor:not-allowed}
+  .btn-ghost{background:#fff;border:1px solid var(--line);color:var(--primary)}
+  .btn-ghost:hover{background:var(--soft)}
+  .hint{font-size:12.5px;color:var(--sub)}
+
+  #msg{margin-top:14px;padding:11px 14px;border-radius:8px;font-size:13.5px;
+       display:none;white-space:pre-line;line-height:1.8}
+  #msg.err{display:block;background:#fdf1f1;color:var(--bad);border:1px solid #f3d4d4}
+  #msg.info{display:block;background:var(--soft);color:var(--primary);border:1px solid #cfe0e6}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .card{background:var(--soft);border-radius:8px;padding:14px}
+  .card .k{font-size:12px;color:var(--sub);margin-bottom:6px}
+  .card .v{font-size:24px;font-weight:700;color:var(--primary)}
+  .card .d{font-size:11.5px;color:var(--sub);margin-top:4px}
+
+  h2{font-size:16px;margin:0 0 12px;color:var(--primary);
+     padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:14px;margin:16px 0 8px;color:var(--ink)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:7px 9px;border-bottom:1px solid #eef2f4;text-align:left;vertical-align:top}
+  th{background:#fafcfd;color:var(--sub);font-weight:600;font-size:12px}
+  tr.hit td{background:#fbfdfb}
+  .tag{display:inline-block;padding:1px 7px;border-radius:4px;font-size:11.5px;
+       font-weight:600;white-space:nowrap}
+  .t-must{background:#e8f1f5;color:var(--primary)}
+  .t-nice{background:#f1f1f1;color:#777}
+  .t-llm{background:#f3eefa;color:#6b4fa0}
+  .t-rules{background:#eef4f6;color:#456}
+  .s-hit{color:var(--ok);font-weight:600}
+  .s-wo{color:var(--warn);font-weight:600}
+  .s-no{color:var(--bad);font-weight:600}
+
+  .sugg{list-style:none;padding:0;margin:0}
+  .sugg li{border:1px solid var(--line);border-radius:8px;padding:12px 14px;
+           margin-bottom:10px;background:#fff}
+  .sugg li.on{border-color:var(--primary-2);background:var(--soft)}
+  .sugg .top{display:flex;gap:10px;align-items:flex-start}
+  .sugg input[type=checkbox]{margin-top:4px;width:16px;height:16px;accent-color:var(--primary)}
+  .sugg .term{font-weight:700;color:var(--primary)}
+  .sugg .meta{font-size:12.5px;color:var(--sub);margin-top:6px;line-height:1.7}
+  .sugg .anchor{font-size:12.5px;color:#7a6a2e;background:#fffbef;
+                border-left:2px solid #e6d08a;padding:6px 9px;margin-top:7px;border-radius:0 4px 4px 0}
+  .sugg .how{font-size:13px;margin-top:7px}
+  .dont{font-size:13px;color:var(--sub)}
+  .dont span{display:inline-block;margin:0 12px 6px 0}
+  .docxok{margin-top:14px;padding:13px 15px;border:1px solid #cfe0e6;
+          border-radius:8px;background:var(--soft)}
+  .docxok .t{font-weight:700;color:var(--primary);margin-bottom:6px;font-size:14px}
+  .docxok .d{font-size:13px;color:var(--sub);margin-bottom:4px;line-height:1.7}
+  .docxok .d b{color:var(--primary)}
+  .docxok a{display:inline-block;margin-top:10px}
+  .optional{font-weight:400;font-size:12px;color:var(--sub);margin-left:8px}
+  input[type=text]{border:1px solid var(--line);border-radius:7px;padding:9px 12px;
+                   font-size:14px;font-family:inherit;flex:1;min-width:220px;
+                   outline:none;background:#fff;transition:.15s}
+  input[type=text]:focus{border-color:var(--primary-2)}
+  .chips{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
+  .chip{background:var(--soft);border:1px solid #cfe0e6;border-radius:20px;
+        padding:4px 11px;font-size:13px;color:var(--primary);
+        display:inline-flex;align-items:center;gap:7px}
+  .chip b{cursor:pointer;color:#8aa3ad;font-weight:700}
+  .chip b:hover{color:var(--bad)}
+  .qitem{margin-bottom:13px}
+  .qitem .q{font-size:13.5px;margin-bottom:6px}
+  .qitem .q b{color:var(--primary)}
+  .qitem .why{font-size:12px;color:var(--sub);margin-left:8px}
+  .qitem input{width:100%}
+
+  .bar{height:6px;border-radius:3px;background:#e6edf0;overflow:hidden;margin-top:6px}
+  .bar > i{display:block;height:100%;background:var(--primary);border-radius:3px}
+  .bar.alt > i{background:#9ec3cf}
+  footer{margin-top:30px;text-align:center;font-size:12px;color:#9aa8ae;line-height:1.9}
+  code{background:#eef2f4;padding:1px 5px;border-radius:3px;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>可被搜索性诊断器</h1>
+    <p class="lede">招聘方在平台上按关键词找人。你的简历里没有那些词，就等于不存在。</p>
+    <div class="status"><span class="dot" id="dot"></span><span id="statustext">正在检查配置…</span></div>
+    <div class="privacy">
+      <b>数据全部留在你这台电脑上。</b>
+      上传的简历、JD、生成的 Word 都只存在 <code>web/uploads</code> 和 <code>web/outputs</code>；
+      服务只监听 <code>127.0.0.1</code>，局域网里的其他设备访问不到；
+      <b>整条流程只有一件事会联网——调用你在 apikey.txt 里配置的模型 API</b>。没有统计上报，没有远程更新。
+    </div>
+  </header>
+
+  <div class="panel">
+    <div class="uploads">
+      <div class="drop" id="drop-resume">
+        <div class="t">① 你的简历</div>
+        <div class="s">pdf / docx / txt / png / jpg</div>
+        <div class="f" id="f-resume"></div>
+      </div>
+      <div class="drop" id="drop-jd">
+        <div class="t">② 目标岗位的 JD</div>
+        <div class="s">pdf / docx / txt / png / jpg</div>
+        <div class="f" id="f-jd"></div>
+      </div>
+    </div>
+    <input type="file" id="in-resume" accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp">
+    <input type="file" id="in-jd" accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp">
+
+    <div class="row" style="margin-top:18px">
+      <button class="btn-main" id="btn-go" disabled>开始诊断</button>
+      <span class="hint" id="hint">两个文件都选好就能开始</span>
+    </div>
+    <div id="msg"></div>
+  </div>
+
+  <div id="result"></div>
+
+  <footer>
+    本工具优化的是「被看见」，不是「被录用」。关键词帮你进入候选池，能否拿到 offer 取决于经历本身。<br>
+    所有建议只在你确实做过的前提下采纳。
+  </footer>
+</div>
+
+<script>
+const state = { resume:null, jd:null, data:null, accepted:new Set(),
+                vision:null, llm:null, extraKw:new Set(), questions:[] };
+
+const $ = id => document.getElementById(id);
+const msg = (t, kind="err") => { const m=$("msg"); m.className=kind; m.textContent=t; if(!t) m.className=""; };
+
+function bindDrop(dropId, inputId, key, labelId){
+  const drop = $(dropId), input = $(inputId), lab = $(labelId);
+  drop.onclick = () => input.click();
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add("on"); };
+  drop.ondragleave = () => drop.classList.remove("on");
+  drop.ondrop = e => {
+    e.preventDefault(); drop.classList.remove("on");
+    if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0], drop, lab, key);
+  };
+  input.onchange = () => { if (input.files[0]) setFile(input.files[0], drop, lab, key); };
+}
+
+function setFile(file, drop, lab, key){
+  if (file.size > 20*1024*1024) { msg("文件超过 20MB，换一个小一点的"); return; }
+  if (/\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name) && state.vision === false) {
+    msg("这个格式是图片，需要视觉模型才能读。打开 sk/apikey.txt，"
+      + "把里面【方案一】智谱 GLM-4V-Flash 那三行的 # 去掉、填上密钥（免费），保存后刷新本页即可。"
+      + "现在也可以先用 txt / pdf / docx。");
+    return;
+  }
+  state[key] = file;
+  drop.classList.add("has");
+  lab.textContent = `${file.name}  ·  ${(file.size/1024).toFixed(0)} KB`;
+  const ready = state.resume && state.jd;
+  $("btn-go").disabled = !ready;
+  $("hint").textContent = ready ? "可以开始了" : (state.resume ? "还差 JD" : "还差简历");
+  msg("");
+}
+
+function toB64(file){
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = String(r.result);
+      res(s.slice(s.indexOf(",")+1));
+    };
+    r.onerror = () => rej(new Error("读取文件失败"));
+    r.readAsDataURL(file);
+  });
+}
+const fmtFile = async f => ({ name:f.name, mime:f.type || "", b64: await toB64(f) });
+
+bindDrop("drop-resume","in-resume","resume","f-resume");
+bindDrop("drop-jd","in-jd","jd","f-jd");
+
+$("btn-go").onclick = async () => {
+  if (!state.resume || !state.jd) return;
+  const btn = $("btn-go");
+  btn.disabled = true; btn.textContent = "分析中…";
+  msg("正在解析文件并调用模型，通常 20–60 秒，请稍候…", "info");
+  try{
+    const body = { resume: await fmtFile(state.resume), jd: await fmtFile(state.jd) };
+    const r = await fetch("/api/analyze", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "分析失败");
+    state.data = d;
+    state.accepted = new Set((d.suggest?.must_add || []).map(x => x.term));
+    state.extraKw = new Set();
+    state.questions = [];
+    msg(""); render(d);
+    $("result").scrollIntoView({behavior:"smooth", block:"start"});
+  }catch(e){
+    msg(e.message || String(e));
+  }finally{
+    btn.disabled = false; btn.textContent = "开始诊断";
+  }
+};
+
+const pct = v => (v==null ? "—" : Math.round(v) + "%");
+const bar = v => `<div class="bar${v!=null&&v>=70?"":" alt"}"><i style="width:${v==null?0:Math.min(100,v)}%"></i></div>`;
+
+function statusCell(x){
+  if (x.hit) return '<span class="s-hit">✅ 命中</span>';
+  if (x.lenient) return '<span class="s-wo">🟡 只缺词</span>';
+  return '<span class="s-no">❌ 真缺</span>';
+}
+
+function render(d){
+  const s = d.scores["精确"], l = d.scores["宽松"];
+  const must = (key) => d.rows.filter(x => x.src==="rules" && x.necessity==="must")
+                              .reduce((a,x)=> a + (key==="hit"? (x.hit?1:0) : (x.lenient?1:0)), 0);
+  const mustTotal = d.rows.filter(x => x.src==="rules" && x.necessity==="must").length;
+
+  let h = [];
+  h.push(`<div class="panel"><h2>诊断结果 · ${esc(d.jd.title||"目标岗位")}</h2>
+    <div class="cards">
+      <div class="card"><div class="k">精确覆盖（字面能搜到）</div>
+        <div class="v">${pct(s["必需词"])}</div>${bar(s["必需词"])}
+        <div class="d">必需词 ${must("hit")} / ${mustTotal}</div></div>
+      <div class="card"><div class="k">宽松覆盖（换个说法可达）</div>
+        <div class="v">${pct(l["必需词"])}</div>${bar(l["必需词"])}
+        <div class="d">必需词 ${must("lenient")} / ${mustTotal}</div></div>
+      <div class="card"><div class="k">职位名对齐</div>
+        <div class="v">${pct(d.title_align)}</div>${bar(d.title_align)}
+        <div class="d">${esc(d.resume_title||"—")}</div></div>
+      <div class="card"><div class="k">关键词来源</div>
+        <div class="v" style="font-size:15px">${esc(d.meta.source||"—")}</div>
+        <div class="d">模型补充 ${d.meta.llm_only||0} 个</div></div>
+    </div>`);
+
+  if (d.meta.job_context)
+    h.push(`<h3>模型的岗位理解</h3><div class="hint">${esc(d.meta.job_context)}</div>`);
+  if (d.meta.notes_cn)
+    h.push(`<h3>国内平台写法提示</h3><div class="hint">${esc(d.meta.notes_cn)}</div>`);
+  h.push(`</div>`);
+
+  // 关键词表
+  h.push(`<div class="panel"><h2>招聘方在找什么</h2>
+    <table><thead><tr><th>层</th><th>关键词</th><th>来源</th><th>必需</th><th>状态</th><th>次数</th></tr></thead><tbody>`);
+  for (const x of d.rows){
+    h.push(`<tr class="${x.hit?"hit":""}">
+      <td>${esc(x.layer)}</td><td>${esc(x.term)}</td>
+      <td><span class="tag ${x.src==="llm"?"t-llm":"t-rules"}">${x.src==="llm"?"模型":"规则库"}</span></td>
+      <td><span class="tag ${x.necessity==="must"?"t-must":"t-nice"}">${x.necessity==="must"?"必需":"加分"}</span></td>
+      <td>${statusCell(x)}</td><td>${x.count}</td></tr>`);
+  }
+  h.push(`</tbody></table>
+    <div class="hint" style="margin-top:12px">
+      「精确」= 招聘方字面能不能搜到；「宽松」= 把你的经历换成招聘方的说法之后的上限。
+      模型补充的词贴 JD 原话、多为长短语，<b>不计入覆盖率分母</b>，只作参考与建议来源。
+    </div></div>`);
+
+  // 可以补
+  const adds = d.suggest?.must_add || [];
+  h.push(`<div class="panel"><h2>可以补（勾选后一起生成 Word）</h2>`);
+  if (adds.length === 0){
+    h.push(`<div class="hint">模型没有给出可补项。</div>`);
+  } else {
+    h.push(`<div class="hint" style="margin-bottom:12px">
+      锚点是模型的依据，已由代码逐字核对确实摘自你的简历。但<b>语义是否成立要你自己判断</b>——
+      比如拿「写文档」去支撑「培训」就是不成立的。</div><ul class="sugg">`);
+    for (const it of adds){
+      const on = state.accepted.has(it.term);
+      h.push(`<li class="${on?"on":""}" data-term="${esc(it.term)}">
+        <div class="top">
+          <input type="checkbox" ${on?"checked":""} class="ck">
+          <div style="flex:1">
+            <div><span class="term">${esc(it.term)}</span></div>
+            <div class="meta"><b>加在哪：</b>${esc(it.where||"—")}</div>
+            <div class="how"><b>怎么改：</b>${esc(it.how||"—")}</div>
+            <div class="anchor"><b>依据（简历原文）：</b>${esc(it.anchor||"—")}</div>
+          </div>
+        </div></li>`);
+    }
+    h.push(`</ul>`);
+  }
+
+  const dont = d.suggest?.do_not_add || [];
+  if (dont.length){
+    h.push(`<h3>不要补</h3><div class="dont">` +
+      dont.map(x=>`<span>· <b>${esc(x.term)}</b> — ${esc(x.why||"")}</span>`).join("") + `</div>`);
+  }
+  h.push(`</div>`);
+
+  // ---- 可选：补充信息 ----
+  h.push(`<div class="panel">
+    <h2>补充信息<span class="optional">可选 · 不填也能直接生成</span></h2>
+
+    <h3>① 你想额外强调的关键词</h3>
+    <div class="hint">看完上面的结果，如果还有你想突出的词，写在这里。逗号分隔可一次加多个。</div>
+    <div class="row" style="margin-top:10px">
+      <input type="text" id="kwin" placeholder="例如：技术培训、客户拜访、竞品分析">
+      <button class="btn-ghost" id="kwadd">添加</button>
+    </div>
+    <div class="chips" id="kwchips"></div>
+
+    <h3>② AI 想跟你核实几个问题</h3>
+    <div class="hint">针对工具判定「真缺」的词。你有就写一句，<b>留空就不会写进简历</b>。</div>
+    <div id="questions" style="margin-top:10px"><span class="hint">正在生成…</span></div>
+
+    <div class="row" style="margin-top:18px">
+      <button class="btn-main" id="btn-docx">生成改写后的 Word</button>
+      <span class="hint">按这份 JD 重构，并融入你上面补充的信息</span>
+    </div>
+    <div id="docxresult"></div>
+    </div>`);
+
+  $("result").innerHTML = h.join("");
+  $("result").querySelectorAll(".sugg li").forEach(li=>{
+    li.querySelector(".ck").onchange = e => {
+      const t = li.dataset.term;
+      if (e.target.checked) { state.accepted.add(t); li.classList.add("on"); }
+      else { state.accepted.delete(t); li.classList.remove("on"); }
+    };
+  });
+  $("btn-docx").onclick = makeDocx;
+  $("kwadd").onclick = addKw;
+  $("kwin").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); addKw(); } };
+  renderChips();
+  loadQuestions();
+}
+
+function addKw(){
+  const el = $("kwin"); if (!el) return;
+  const raw = (el.value || "").trim();
+  if (!raw) return;
+  raw.split(/[,，、;；]+/).filter(Boolean)
+     .forEach(k => state.extraKw.add(k.trim().slice(0, 20)));
+  el.value = "";
+  renderChips();
+}
+
+function renderChips(){
+  const box = $("kwchips"); if (!box) return;
+  box.innerHTML = [...state.extraKw].map(k =>
+    `<span class="chip">${esc(k)}<b data-k="${esc(k)}">×</b></span>`).join("");
+  box.querySelectorAll("b[data-k]").forEach(b => {
+    b.onclick = () => { state.extraKw.delete(b.dataset.k); renderChips(); };
+  });
+}
+
+async function loadQuestions(){
+  const box = $("questions"); if (!box) return;
+  try{
+    const r = await fetch("/api/ask", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ resume_text: state.data.texts.resume,
+                             jd_text: state.data.texts.jd })
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "生成失败");
+    const qs = d.questions || [];
+    state.questions = qs;
+    if (!qs.length){
+      box.innerHTML = `<span class="hint">没有需要额外核实的缺口 —— 直接生成即可。</span>`;
+      return;
+    }
+    box.innerHTML = qs.map((q, i) => `
+      <div class="qitem" data-i="${i}">
+        <div class="q"><b>${esc(q.keyword || "")}</b>　${esc(q.question)}
+          ${q.why ? `<span class="why">${esc(q.why)}</span>` : ""}</div>
+        <input type="text" class="qans"
+               placeholder="有就写一句（例如：给同事做过 2 次工具培训）；没有就留空">
+      </div>`).join("");
+  }catch(e){
+    box.innerHTML = `<span class="hint">问题生成失败（不影响生成）：${esc(e.message)}</span>`;
+  }
+}
+
+async function makeDocx(){  const btn = $("btn-docx");
+  btn.disabled = true; btn.textContent = "生成中…";
+  try{
+    const adds = (state.data.suggest?.must_add || [])
+      .filter(x => state.accepted.has(x.term))
+      .map(x => `${x.term}（${x.where}）：${x.how}`);
+
+    // 收集用户对核实问题的回答：留空的一律不提交 = 不许写进简历
+    const qa = [...document.querySelectorAll(".qitem")].map(el => {
+      const i = Number(el.dataset.i);
+      const q = state.questions[i] || {};
+      return {
+        question: q.question || "",
+        keyword: q.keyword || "",
+        answer: (el.querySelector(".qans")?.value || "").trim()
+      };
+    }).filter(x => x.answer);
+
+    const r = await fetch("/api/docx", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        resume_text: state.data.texts.resume,
+        jd_text: state.data.texts.jd,
+        name_hint: (state.resume.name || "").replace(/\.[^.]+$/, ""),
+        accepted: adds,
+        extra_keywords: [...state.extraKw],
+        qa: qa
+      })
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "生成失败");
+
+    const p = v => (v==null ? "—" : Math.round(v) + "%");
+    let line = "";
+    if (d.before && d.after){
+      const b = d.before["精确"], a2 = d.after["精确"];
+      const bl = d.before["宽松"], al = d.after["宽松"];
+      const diff = (b!=null && a2!=null) ? (a2 - b) : null;
+      line = `<div class="d">精确覆盖 <b>${p(b)} → ${p(a2)}</b>`
+           + (diff==null ? "" : `（${diff>=0?"+":""}${Math.round(diff)} pt）`)
+           + `　|　宽松覆盖 <b>${p(bl)} → ${p(al)}</b></div>`;
+    }
+    const secs = (d.spec.sections||[]).map(s=>s.title).filter(Boolean).join(" · ");
+    const incorp = [];
+    if (state.extraKw.size) incorp.push(`补充关键词 ${state.extraKw.size} 个`);
+    if (qa.length) incorp.push(`核实回答 ${qa.length} 条`);
+    $("docxresult").innerHTML =
+      `<div class="docxok">
+         <div class="t">✅ 已生成并下载：${esc(d.file)}</div>
+         ${line}
+         <div class="d">已融入：${esc(incorp.length ? incorp.join(" · ") : "（无额外补充）")}</div>
+         <div class="d">章节结构：${esc(secs || "—")}</div>
+         <div class="d">文件同时也存在 <code>web/outputs/</code>；没自动下载就点下面。</div>
+         <a class="btn-ghost" href="${d.url}" download="${esc(d.file)}">下载 Word</a>
+       </div>`;
+
+    btn.textContent = "已生成 ✓";
+    const a = document.createElement("a");
+    a.href = d.url; a.download = d.file;
+    document.body.appendChild(a); a.click(); a.remove();
+    msg("");
+  }catch(e){
+    msg(e.message || String(e));
+  }finally{
+    btn.disabled = false;
+    setTimeout(()=>{ btn.textContent = "生成改写后的 Word"; }, 2500);
+  }
+}
+
+function esc(s){ return String(s==null?"":s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// 启动时自检：API Key 与视觉模型状态，直接显示在标题下面
+(async () => {
+  const dot = $("dot"), t = $("statustext");
+  try{
+    const d = await (await fetch("/api/health")).json();
+    state.llm = !!d.llm;
+    state.vision = !!d.vision_model;
+    if (!d.llm){
+      dot.className = "dot bad";
+      t.textContent = "还没有配置 API Key —— 打开 sk/apikey.txt 粘贴 key，保存后刷新本页";
+      msg("还没有配置 API Key。把 key 粘进 sk/apikey.txt 后刷新本页。");
+    } else if (!d.vision_model){
+      dot.className = "dot warn";
+      t.textContent = "文本模型就绪；图片识别未配置 → 只能传 txt / pdf / docx"
+                    + "（要传图片就按 sk/apikey.txt 里的【方案一】配视觉模型，智谱 GLM-4V-Flash 免费）";
+    } else {
+      dot.className = "dot ok";
+      t.textContent = "模型就绪，图片识别已启用（" + d.vision_model + "）";
+    }
+  }catch(e){
+    dot.className = "dot bad";
+    t.textContent = "连不上本地服务 —— 启动的那个黑窗口是不是关了？";
+  }
+})();
+</script>
+</body>
+</html>
