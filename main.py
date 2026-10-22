@@ -21,6 +21,8 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
 import core  # noqa: E402
+import llm   # noqa: E402
+import v2    # noqa: E402
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -79,7 +81,7 @@ def mark(x):
 
 
 # ---------------------------------------------------------------------------
-def render(res, resume_name):
+def render(res, resume_name, sugg=None, meta=None):
     rows, sc = res["rows"], res["scores"]
     strict, lenient = sc["精确"], sc["宽松"]
     L = []
@@ -94,11 +96,17 @@ def render(res, resume_name):
     A("| 简历求职意向 | %s |" % (res["resume_title"] or "(未识别)"))
     A("| 职位名对齐度 | %s |" % pct(res["title_align"]).strip())
     A("")
-    A("> **结论**：" + verdict(sc, res["title_align"]))
+    _v = (sugg or {}).get("verdict") or ""
+    A("> **结论**：" + (_v if _v else verdict(sc, res["title_align"])))
     A("")
 
     A("## 一、两个覆盖率，以及它们之间的差")
     A("")
+    if sugg:
+        A("> ⚠️ 这两个数是**纯字面口径**。模型抽出的关键词更贴 JD 原话（如「AI 场景探索」），"
+          "而你简历写的是「场景探索」——字面确实搜不到，所以这个比例会偏低。")
+        A("> **谁该补、谁不能补，以第三、四节的模型判定为准。**")
+        A("")
     A("| 分项 | 精确覆盖 | 宽松覆盖 | 差额（可补空间） |")
     A("|---|---:|---:|---:|")
     for k in ("必需词", "职位名", "硬技能", "工具领域", "软性"):
@@ -130,37 +138,111 @@ def render(res, resume_name):
             mark(x), x["count"]))
     A("")
 
-    A("## 三、缺口怎么处理（这一节才是重点）")
+    # 第三节的判定依据：v2 用模型 + 锚点复核；v1 用规则库 RELATED
+    if sugg:
+        wo_map = {x.get("term", ""): x for x in (sugg.get("must_add") or [])}
+        ne_set = {x.get("term", "") for x in (sugg.get("do_not_add") or [])}
+        word_only = [(x, (wo_map.get(x["term"]) or {}).get("anchor", ""))
+                     for x in rows if not x["hit"] and x["term"] in wo_map]
+        no_exp = [(x, "模型判定：简历里没有事实支撑")
+                  for x in rows if not x["hit"] and x["term"] in ne_set]
+        unjudged = [x for x in rows if not x["hit"]
+                    and x["term"] not in wo_map and x["term"] not in ne_set]
+        sec3 = "## 三、缺口怎么处理（v2 · 模型判定，锚点已逐字复核）"
+        wo_hint, ne_hint = "简历里的原文依据（已复核）", "原因"
+    else:
+        word_only = [(x, "、".join(x["anchors"])) for x in rows
+                     if not x["hit"] and x["hit_lenient"]]
+        no_exp = [(x, "无任何相关迹象，硬加会在面试被追问时崩")
+                  for x in rows if not x["hit_lenient"]]
+        unjudged = []
+        sec3 = "## 三、缺口怎么处理（v1 · 规则库判定）"
+        wo_hint, ne_hint = "你简历里已有的说法", "为什么不要加"
+
+    A(sec3)
     A("")
     A("### 🟡 只缺词：经历在，只是没用招聘方的说法（**可以补，优先补**）")
     A("")
-    word_only = [x for x in rows if not x["hit"] and x["hit_lenient"]]
     if word_only:
-        A("| 关键词 | 必需? | 你简历里已有的说法 |")
+        A("| 关键词 | 必需? | %s |" % wo_hint)
         A("|---|:---:|---|")
-        for x in word_only:
+        for x, extra in word_only:
             A("| **%s** | %s | %s |" % (
-                x["term"],
-                "必需" if x["necessity"] == "must" else "加分",
-                "、".join(x["anchors"]) or "—"))
+                x["term"], "必需" if x["necessity"] == "must" else "加分",
+                extra or "—"))
     else:
         A("（无）")
     A("")
 
-    A("### ❌ 真缺：简历里连相关痕迹都没有（**不要硬加**）")
+    A("### ❌ 真缺：简历里没有事实支撑（**不要硬加**）")
     A("")
-    no_exp = [x for x in rows if not x["hit_lenient"]]
     if no_exp:
-        A("| 关键词 | 必需? | 为什么不要加 |")
+        A("| 关键词 | 必需? | %s |" % ne_hint)
         A("|---|:---:|---|")
-        for x in no_exp:
-            A("| %s | %s | 无任何相关迹象，硬加会在面试被追问时崩 |" % (
-                x["term"], "必需" if x["necessity"] == "must" else "加分"))
+        for x, why in no_exp:
+            A("| %s | %s | %s |" % (
+                x["term"], "必需" if x["necessity"] == "must" else "加分", why))
     else:
         A("（无）")
     A("")
 
-    A("## 四、最后的提醒")
+    if unjudged:
+        A("### ⚪ 模型未涉及（%d 个，自己判断）" % len(unjudged))
+        A("")
+        A("、".join(x["term"] for x in unjudged))
+        A("")
+
+    if sugg:
+        A("## 四、改写建议（v2 · 模型生成，锚点已由代码复核）")
+        A("")
+        if sugg.get("verdict"):
+            A("> " + sugg["verdict"])
+            A("")
+        adds = sugg.get("must_add") or []
+        if adds:
+            A("### 可以补（每条都附了简历里的原文依据）")
+            A("")
+            A("| 补什么 | 加在哪 | 怎么改 | 简历里的依据 |")
+            A("|---|---|---|---|")
+            for it in adds:
+                A("| **%s** | %s | %s | 「%s」 |" % (
+                    it.get("term", ""), it.get("where", ""),
+                    it.get("how", ""), it.get("anchor", "")))
+            A("")
+        dont = sugg.get("do_not_add") or []
+        if dont:
+            A("### 不要补")
+            A("")
+            A("| 不要补 | 原因 |")
+            A("|---|---|")
+            for it in dont:
+                A("| %s | %s |" % (it.get("term", ""), it.get("why", "")))
+            A("")
+        if sugg.get("rewrite_sample"):
+            A("### 改写示例")
+            A("")
+            A("> " + sugg["rewrite_sample"])
+            A("")
+
+    if meta:
+        A("## 附 · 本次运行")
+        A("")
+        A("| 项 | 值 |")
+        A("|---|---|")
+        A("| 关键词来源 | %s |" % meta.get("source", "?"))
+        if meta.get("job_context"):
+            A("| 岗位理解 | %s |" % meta["job_context"])
+        if meta.get("notes_cn"):
+            A("| 国内平台提示 | %s |" % meta["notes_cn"])
+        if meta.get("dropped"):
+            A("| 护栏拦截 | %d 条建议因依据在简历原文中找不到，已移入「不要补」 |" % meta["dropped"])
+        if meta.get("usage"):
+            A("| Token 用量 | %s |" % v2.usage_line(meta["usage"]))
+        if meta.get("reason"):
+            A("| 说明 | %s |" % meta["reason"])
+        A("")
+
+    A("## 最后的提醒")
     A("")
     A("> " + HONESTY_NOTE)
     A("")
@@ -174,7 +256,10 @@ def main():
     ap.add_argument("--jd")
     ap.add_argument("--jd-dir", default=os.path.join(ROOT, "inputs"))
     ap.add_argument("--out", default=os.path.join(ROOT, "out"))
+    ap.add_argument("--no-llm", action="store_true",
+                    help="强制只用规则库（v1），不调用模型")
     args = ap.parse_args()
+    args.llm = (not args.no_llm) and llm.has_key()
 
     resume_text = core.read_text(args.resume)
     resume_name = os.path.basename(args.resume)
@@ -190,19 +275,29 @@ def main():
     print("=" * 82)
     print("简历：%s" % resume_name)
     print("求职意向：%s" % (core.parse_resume_title(resume_text) or "(未识别)"))
+    print("模式：%s    %s" % ("v2 · LLM + 规则" if args.llm else "v1 · 纯规则",
+                            llm.config_summary()))
+    if not args.llm and not args.no_llm:
+        print("      （没检测到 API Key，已回退 v1；设置 DEEPSEEK_API_KEY 后自动启用 v2）")
     print("=" * 82)
     print("%-32s %8s %8s %8s %8s" % ("JD", "精确", "宽松", "可补", "职位名"))
     print("-" * 82)
 
     for path in jd_files:
         name = os.path.splitext(os.path.basename(path))[0]
-        res = core.analyze(core.read_text(path), resume_text, jd_name=name)
+        jd_text = core.read_text(path)
+        kws, kmeta = v2.extract_keywords(jd_text, use_llm=args.llm)
+        res = core.analyze(jd_text, resume_text, jd_name=name, keywords=kws)
         results.append(res)
+
+        sugg, smeta = v2.suggest(res, resume_text, jd_text, use_llm=args.llm)
+        meta = dict(kmeta)
+        meta.update(smeta)
 
         with open(os.path.join(args.out, "%s__%s.md"
                               % (name, os.path.splitext(resume_name)[0])),
                   "w", encoding="utf-8") as f:
-            f.write(render(res, resume_name))
+            f.write(render(res, resume_name, sugg, meta))
 
         sc = res["scores"]
         s, l = sc["精确"]["必需词"], sc["宽松"]["必需词"]
